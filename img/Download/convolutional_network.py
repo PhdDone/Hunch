@@ -3,15 +3,16 @@ from __future__ import print_function
 import tensorflow as tf
 from PIL import Image
 import numpy as np
-
-# Import MNIST data
-#from tensorflow.examples.tutorials.mnist import input_data
-#mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
+import requests
+from StringIO import StringIO
+import time
 
 # Parameters
-learning_rate = 0.001
-training_iters = 15
-batch_size = 2 #128
+model_file = 'model.ckpt'
+
+learning_rate = 0.0001
+training_iters = 10000
+batch_size = 2 #
 display_step = 1
 
 NUM_CLASSES = 2
@@ -20,9 +21,11 @@ IMAGE_COL = 300
 CHANNELS = 1
 IMAGE_PIXELS = IMAGE_ROW * IMAGE_COL * CHANNELS
 
+CONV1_DEPTH = 16
+CONV2_DEPTH = 32
 # Network Parameters
 n_input = IMAGE_PIXELS
-n_classes = 2 # MNIST total classes (0-9 digits)
+n_classes = 2 # First try 2 classes
 dropout = 0.75 # Dropout, probability to keep units
 
 # tf Graph input
@@ -36,7 +39,6 @@ def conv2d(x, W, b, strides=1):
     # Conv2D wrapper, with bias and relu activation
     x = tf.nn.conv2d(x, W, strides=[1, strides, strides, 1], padding='SAME')
     x = tf.nn.bias_add(x, b)
-    print (x)
     return tf.nn.relu(x)
 
 
@@ -75,20 +77,20 @@ def conv_net(x, weights, biases, dropout):
 
 # Store layers weight & bias
 weights = {
-    # 5x5 conv, 1 input, 32 outputs
-    'wc1': tf.Variable(tf.random_normal([5, 5, 1, 32])),
-    # 5x5 conv, 32 inputs, 64 outputs
-    'wc2': tf.Variable(tf.random_normal([5, 5, 32, 64])),
+    # 5x5 conv, 1 input, 16 outputs
+    'wc1': tf.Variable(tf.random_normal([5, 5, 1, CONV1_DEPTH])),
+    # 5x5 conv, 16 inputs, 32 outputs
+    'wc2': tf.Variable(tf.random_normal([5, 5, CONV1_DEPTH, CONV2_DEPTH])),
     # fully connected, 150*75*64 inputs, 1024 outputs, 300/4 * 600/4 * 64
-    'wd1': tf.Variable(tf.random_normal([150*75*64, 1024])),
-    # 1024 inputs, 10 outputs (class prediction)
-    'out': tf.Variable(tf.random_normal([1024, n_classes]))
+    'wd1': tf.Variable(tf.random_normal([150*75*CONV2_DEPTH, 512])),
+    # 512 inputs, 10 outputs (class prediction)
+    'out': tf.Variable(tf.random_normal([512, n_classes]))
 }
 
 biases = {
-    'bc1': tf.Variable(tf.random_normal([32])),
-    'bc2': tf.Variable(tf.random_normal([64])),
-    'bd1': tf.Variable(tf.random_normal([1024])),
+    'bc1': tf.Variable(tf.random_normal([16])),
+    'bc2': tf.Variable(tf.random_normal([32])),
+    'bd1': tf.Variable(tf.random_normal([512])),
     'out': tf.Variable(tf.random_normal([n_classes]))
 }
 
@@ -103,60 +105,21 @@ optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost)
 correct_pred = tf.equal(tf.argmax(pred, 1), tf.argmax(y, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
+# Save model
+saver = tf.train.Saver()
 # Initializing the variables
 init = tf.initialize_all_variables()
 
-
-# Launch the graph
-with tf.Session() as sess:
-    sess.run(init)
-    step = 1
-    # Keep training until reach max iterations
-    while step * batch_size < training_iters:
-        #batch_x, batch_y = mnist.train.next_batch(batch_size)
-        # Run optimization op (backprop)
-        train_images = []
-        files = ['02.jpg', '03.jpg']
-        for filename in files:
-            image = Image.open(filename).convert('L')
-            width, height = image.size
-            new_width = IMAGE_COL
-            new_height = IMAGE_ROW
-            left = (width - new_width)/2
-            top = (height - new_height)/2
-            right = (width + new_width)/2
-            bottom = (height + new_height)/2
-            image = image.crop((left, top, right, bottom))
-            image = image.resize((IMAGE_COL,IMAGE_ROW))
-            train_images.append(np.array(image))
-
-        ti = np.array(train_images)
-        batch_x = ti.reshape(len(files), IMAGE_PIXELS)
-        label = [[1.0,0.0], [0.0,1.0]]
-        
-        batch_y = np.array(label)
-        print(len(batch_x[0]))
-        #batch_x, batch_y = mnist.train.next_batch(batch_size)
-        #print (len(batch_x[0]))
-        sess.run(optimizer, feed_dict={x: batch_x, y: batch_y,
-                                       keep_prob: dropout})
-        if step % display_step == 0:
-            # Calculate batch loss and accuracy
-            loss, acc = sess.run([cost, accuracy], feed_dict={x: batch_x,
-                                                              y: batch_y,
-                                                              keep_prob: 1.})
-            print("Iter " + str(step*batch_size) + ", Minibatch Loss= " + \
-                  "{:.6f}".format(loss) + ", Training Accuracy= " + \
-                  "{:.5f}".format(acc))
-        step += 1
-    print("Optimization Finished!")
-    # Save model??
-    
-    # Calculate accuracy for 256 mnist test images
+def getImage(url):
+    return Image.open(StringIO(requests.get(url).content)).convert('L')
+def loadData(filename):
+    print ("Loading images from " + filename)
+    total = 0
     train_images = []
-    files = ['02.jpg', '03.jpg']
-    for filename in files:
-        image = Image.open(filename).convert('L')
+    pos = open(filename, "r")
+    for line in pos:
+        url, label = line.strip().split('\t')
+        image = getImage(url)
         width, height = image.size
         new_width = IMAGE_COL
         new_height = IMAGE_ROW
@@ -167,11 +130,96 @@ with tf.Session() as sess:
         image = image.crop((left, top, right, bottom))
         image = image.resize((IMAGE_COL,IMAGE_ROW))
         train_images.append(np.array(image))
+        total += 1
     ti = np.array(train_images)
-    batch_x = ti.reshape(2, IMAGE_PIXELS)
-    label = [[1.0,0.0], [0.0,1.0]]
+    '''
+    print (ti.shape)
+    print (total)
+    print (IMAGE_PIXELS)
+    '''
+    X = ti.reshape(total, IMAGE_PIXELS)
+    return X
+X_pos = loadData("pos.train.txt")
+X_neg = loadData("neg.train.txt")
+
+batch_size = X_pos.shape[0] + X_neg.shape[0]
+prev_acc = 0.0
+
+print ("Number of positive examples: " + str(X_pos.shape[0]))
+print ("Number of negative examples: " + str(X_neg.shape[0]))
+
+# Launch the graph
+with tf.Session() as sess:
+    sess.run(init)
+    step = 1
+    # Keep training until reach max iterations
+    while step * batch_size < training_iters:
+        n_pos = X_pos.shape[0]
+        n_neg = X_neg.shape[0]
+        #Use whole data
+        batch_x = np.concatenate((X_pos, X_neg), axis=0)
+
+        a = np.zeros(n_pos, dtype=np.int)
+        b = np.zeros((n_pos, 2))
+        b[np.arange(n_pos), a] = 1
+        c = np.ones(n_neg, dtype=np.int)
+        d = np.zeros((n_neg, 2))
+        d[np.arange(n_neg), c] = 1
         
-    batch_y = np.array(label)
+        batch_y = np.concatenate((b, d), axis=0)
+
+        start_time = time.time()
+        sess.run(optimizer, feed_dict={x: batch_x, y: batch_y,
+                                       keep_prob: dropout})
+        duration = time.time() - start_time
+        if step % display_step == 0:
+            # Calculate batch loss and accuracy
+            loss, acc = sess.run([cost, accuracy], feed_dict={x: batch_x,
+                                                              y: batch_y,
+                                                              keep_prob: 1.})
+            print("Iter " + str(step*batch_x.shape[0]) + ", batch Loss= " + \
+                  "{:.6f}".format(loss) + ", Training Accuracy= " + \
+                  "{:.5f}".format(acc) + ", Time(sec)= " + "{:.3f}".format(duration))
+
+        X_pos_dev = loadData("pos.dev.txt")
+        X_neg_dev = loadData("neg.dev.txt")
+        batch_x_dev = np.concatenate((X_pos_dev, X_neg_dev), axis=0)
+        n_pos = X_pos_dev.shape[0]
+        n_neg = X_neg_dev.shape[0]
+        a = np.zeros(n_pos, dtype=np.int)
+        b = np.zeros((n_pos, 2))
+        b[np.arange(n_pos), a] = 1
+        c = np.ones(n_neg, dtype=np.int)
+        d = np.zeros((n_neg, 2))
+        d[np.arange(n_neg), c] = 1
+        
+        batch_y_dev = np.concatenate((b, d), axis=0)
+        print("Dev" + str(X_pos.shape[0]))
+        dev_acc = sess.run(accuracy, feed_dict={x: batch_x_dev,
+                                      y: batch_y_dev,
+                                      keep_prob: 1.})
+        print("Dev Data Accuracy:", dev_acc)
+        if dev_acc > prev_acc:
+            # Save model
+            saver.save(sess, model_file)
+            prev_acc = dev_acc
+        step += 1
+    print("Optimization Finished!")
+
+    # Calculate accuracy for test data
+    X_pos = loadData("pos.test.txt")
+    X_neg = loadData("neg.test.txt")
+    batch_x = np.concatenate((X_pos, X_neg), axis=0)
+    n_pos = X_pos.shape[0]
+    n_neg = X_neg.shape[0]
+    a = np.zeros(n_pos, dtype=np.int)
+    b = np.zeros((n_pos, 2))
+    b[np.arange(n_pos), a] = 1
+    c = np.ones(n_neg, dtype=np.int)
+    d = np.zeros((n_neg, 2))
+    d[np.arange(n_neg), c] = 1
+        
+    batch_y = np.concatenate((b, d), axis=0)
     print("Testing Accuracy:", \
         sess.run(accuracy, feed_dict={x: batch_x,
                                       y: batch_y,
