@@ -3,6 +3,7 @@
 Based on [tensorflow tutorial](https://www.tensorflow.org/versions/r0.11/tutorials/mnist/pros/index.html#convolution-and-pooling), apply convnet to classify Jean and Shirt images.
 
 ##NN structure
+<<<<<<< HEAD
 Two onvolutional layers followed by one densely connected layer.
 
 ##Data
