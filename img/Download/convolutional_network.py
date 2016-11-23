@@ -132,11 +132,7 @@ def loadData(filename):
         train_images.append(np.array(image))
         total += 1
     ti = np.array(train_images)
-    '''
-    print (ti.shape)
-    print (total)
-    print (IMAGE_PIXELS)
-    '''
+
     X = ti.reshape(total, IMAGE_PIXELS)
     return X
 X_pos = loadData("pos.train.txt")
@@ -220,6 +216,10 @@ with tf.Session() as sess:
     d[np.arange(n_neg), c] = 1
         
     batch_y = np.concatenate((b, d), axis=0)
+    
+    print("Loading variables from " + model_file)
+    saver.restore(sess, model_file)
+    print("Finish loading model")
     print("Testing Accuracy:", \
         sess.run(accuracy, feed_dict={x: batch_x,
                                       y: batch_y,
